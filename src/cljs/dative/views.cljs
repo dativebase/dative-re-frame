@@ -1,68 +1,82 @@
 (ns dative.views
   (:require [re-frame.core :as re-frame]
             [dative.subs :as subs]
+            [re-com.core :as re-com]
             ))
 
-(defn key-press-login-input
+(defn key-up-login-input
   [e]
   (when (= "Enter" (.-key e))
     (re-frame/dispatch [:user-pressed-enter])))
 
 (defn username-input
   []
-  [:li "Username" [:br]
-   [:input
-    {:auto-complete "on"
-     :key "username"
-     :value @(re-frame/subscribe [:login-username])
-     :disabled @(re-frame/subscribe [:login-inputs-disabled?])
-     :on-key-press key-press-login-input
-     :on-change #(re-frame/dispatch
-                   [:user-changed-username (-> % .-target .-value)])}]])
+  (let [status-meta @(re-frame/subscribe [:login-username-status])
+        status (first status-meta)
+        status-icon? (boolean status)
+        status-tooltip (or (second status-meta) "")]
+    [re-com/box
+     :child
+     [re-com/input-text
+      :attr {:on-key-up key-up-login-input}
+      :status status
+      :status-icon? status-icon?
+      :status-tooltip status-tooltip
+      :change-on-blur? false
+      :placeholder "username"
+      :model @(re-frame/subscribe [:login-username])
+      :disabled? @(re-frame/subscribe [:login-inputs-disabled?])
+      :on-change #(re-frame/dispatch [:user-changed-username %])]]))
 
 (defn password-input
   []
-  [:li "Password" [:br]
-   [:input
-    {:auto-complete "off"
-     :key "password"
-     :value @(re-frame/subscribe [:login-password])
-     :disabled @(re-frame/subscribe [:login-inputs-disabled?])
-     :on-key-press key-press-login-input
-     :on-change #(re-frame/dispatch
-                   [:user-changed-password (-> % .-target .-value)])
-     :type "password"}]])
+  (let [status-meta @(re-frame/subscribe [:login-password-status])
+        status (first status-meta)
+        status-icon? (boolean status)
+        status-tooltip (or (second status-meta) "")]
+    [re-com/box
+     :child
+     [re-com/input-password
+      :attr {:on-key-up key-up-login-input}
+      :status status
+      :status-icon? status-icon?
+      :status-tooltip status-tooltip
+      :placeholder "password"
+      :change-on-blur? false
+      :model @(re-frame/subscribe [:login-password])
+      :disabled? @(re-frame/subscribe [:login-inputs-disabled?])
+      :on-change #(re-frame/dispatch [:user-changed-password %])]]))
 
 (defn login-button
   []
-  [:input {:type "button"
-           :value "Login"
-           :disabled @(re-frame/subscribe [:login-disabled?])
-           :on-click (fn [e] (re-frame/dispatch [:user-clicked-login]))}])
+  [re-com/box
+   :child
+   [re-com/button
+    :label "Login"
+    :disabled? @(re-frame/subscribe [:login-disabled?])
+    :on-click (fn [e] (re-frame/dispatch [:user-clicked-login]))]])
 
 (defn logout-button
   []
-  [:input {:type "button"
-           :value "Logout"
-           :disabled @(re-frame/subscribe [:logout-disabled?])
-           :on-click (fn [e] (re-frame/dispatch [:user-clicked-logout]))}])
-
-(defn failure-notification
-  []
-  (when-let [failure @(re-frame/subscribe [:login-failure])]
-    [:div {:style {:color "red"}} failure]))
+  [re-com/box
+   :child
+   [re-com/button
+    :label "Logout"
+    :disabled? @(re-frame/subscribe [:logout-disabled?])
+    :on-click (fn [e] (re-frame/dispatch [:user-clicked-logout]))]])
 
 (defn login-widget
   []
-  [:div
-   {:class 'login-widget}
-   [failure-notification]
-   [:form
-    [:ul
-     [username-input]
-     [password-input]
-     [login-button]
-     [logout-button]]]])
+  [re-com/v-box
+   :margin "10px"
+   :gap "5px"
+   :children [
+    [username-input]
+    [password-input]
+    [re-com/h-box
+     :children [[login-button]
+                [logout-button]]
+     :gap "5px"]]])
 
 (defn main-panel []
   (let [name (re-frame/subscribe [:name])]

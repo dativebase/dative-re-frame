@@ -3,5 +3,6 @@
 
 (defstyles screen
   [:div.login-widget
-   [:li {:list-style "None"}]]
+   [:li {:list-style "None"
+         :color "green"}]]
 )

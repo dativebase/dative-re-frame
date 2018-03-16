@@ -15,11 +15,16 @@ Setup and run
 
 3. Clean build::
 
-       $ lein do clean, figwheel
+       $ lein clean
+       $ lein figwheel dev
 
 4. Run. You'll have to wait for step (3) to do its compile, but then::
 
        $ open http://localhost:3451
+
+5. To make the garden ClojureScript auto-compile to CSS::
+
+       $ lein garden auto
 
 
 Compile an optimised version

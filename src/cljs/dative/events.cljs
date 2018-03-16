@@ -38,6 +38,7 @@
 
 (defn handle-user-changed-username
   [db [event username]]
+  (println username)
   (-> db
       (assoc :username username)
       (update-next-login-state event)))
@@ -70,7 +71,7 @@
                      (= login-state :login-is-ready)
                      [:login-initiated-authentication]
                      :else
-                     [:non-event])}))
+                     nil)}))
 
 (defn handle-user-clicked-logout
   [{:keys [db]} _]
@@ -122,7 +123,14 @@
 
 (def interceptors [debug])
 
-(re-frame/reg-event-db :app-was-initialized interceptors handle-next-login-state)
+(defn handle-app-was-initialized
+  [db [event _]]
+  (-> db
+      (assoc :username ""
+             :password "")
+      (update-next-login-state event)))
+
+(re-frame/reg-event-db :app-was-initialized interceptors handle-app-was-initialized)
 (re-frame/reg-event-db :non-event interceptors handle-next-login-state)
 (re-frame/reg-event-db :username-invalidated-login interceptors handle-next-login-state)
 (re-frame/reg-event-db :password-invalidated-login interceptors handle-next-login-state)

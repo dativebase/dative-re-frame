@@ -15,15 +15,28 @@
   (fn [db _] (get db :login-invalid-reason)))
 
 (re-frame/reg-sub
-  :login-failure
+  :login-username-status
   (fn [db _] [(re-frame/subscribe [:login-state])
               (re-frame/subscribe [:login-invalid-reason])])
   (fn [[login-state invalid-reason] _]
     (case login-state
-      :login-requires-username "username required"
-      :login-requires-password "password required"
-      :login-is-invalid invalid-reason
-      nil)))
+      :login-requires-username [:error "Username required"]
+      :login-is-invalid [:error invalid-reason]
+      :user-is-authenticated [:success]
+      :login-is-authenticating [:validating]
+      [nil])))
+
+(re-frame/reg-sub
+  :login-password-status
+  (fn [db _] [(re-frame/subscribe [:login-state])
+              (re-frame/subscribe [:login-invalid-reason])])
+  (fn [[login-state invalid-reason] _]
+    (case login-state
+      :login-requires-password [:error "Password required"]
+      :login-is-invalid [:error invalid-reason]
+      :user-is-authenticated [:success]
+      :login-is-authenticating [:validating]
+      [nil])))
 
 (re-frame/reg-sub
   :login-password

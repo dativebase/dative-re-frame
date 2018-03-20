@@ -1,23 +1,32 @@
 (ns dative.subs
-  (:require [re-frame.core :as re-frame]))
+  (:require [re-frame.core :refer [reg-sub]]
+            [dative.utils  :refer [get-current-old-instance-url]]))
 
-(re-frame/reg-sub
+(reg-sub
  :name
  (fn [db]
    (:name db)))
 
-(re-frame/reg-sub
+(reg-sub
   :login-state
   (fn [db _] (get db :login-state)))
 
-(re-frame/reg-sub
+(reg-sub
+  :current-tab
+  (fn [db _] (get db :current-tab)))
+
+(reg-sub
   :login-invalid-reason
   (fn [db _] (get db :login-invalid-reason)))
 
-(re-frame/reg-sub
+(reg-sub
+  :new-old-invalid-reason
+  (fn [db _] (get db :new-old-invalid-reason)))
+
+(reg-sub
   :login-username-status
-  (fn [db _] [(re-frame/subscribe [:login-state])
-              (re-frame/subscribe [:login-invalid-reason])])
+  :<- [:login-state]
+  :<- [:login-invalid-reason]
   (fn [[login-state invalid-reason] _]
     (case login-state
       :login-requires-username [:error "Username required"]
@@ -26,10 +35,10 @@
       :login-is-authenticating [:validating]
       [nil])))
 
-(re-frame/reg-sub
+(reg-sub
   :login-password-status
-  (fn [db _] [(re-frame/subscribe [:login-state])
-              (re-frame/subscribe [:login-invalid-reason])])
+  :<- [:login-state]
+  :<- [:login-invalid-reason]
   (fn [[login-state invalid-reason] _]
     (case login-state
       :login-requires-password [:error "Password required"]
@@ -38,25 +47,97 @@
       :login-is-authenticating [:validating]
       [nil])))
 
-(re-frame/reg-sub
+(reg-sub
+  :all-old-instances
+  (fn [db _] (:old-instances db)))
+
+(reg-sub
+  :old-instance-states
+  :<- [:all-old-instances]
+  (fn [all-old-instances _]
+    (reduce
+      (fn [ret [id val]] (assoc ret id (:state val)))
+      {}
+      all-old-instances)))
+
+(reg-sub
+  :old-instance-url-statuses
+  :<- [:old-instance-states]
+  (fn [old-instance-states _]
+    (reduce
+      (fn [ret [id val]]
+        (case val
+          :requires-url (assoc ret id [:error "URL required"])
+          (assoc ret id [nil])))
+      {}
+      old-instance-states)))
+
+(reg-sub
+  :old-instance-name-statuses
+  :<- [:old-instance-states]
+  (fn [old-instance-states _]
+    (reduce
+      (fn [ret [id val]]
+        (case val
+          :requires-label (assoc ret id [:error "Name required"])
+          (assoc ret id [nil])))
+      {}
+      old-instance-states)))
+
+(reg-sub
   :login-password
   (fn [db _] (get db :password)))
 
-(re-frame/reg-sub
+(reg-sub
   :login-username
   (fn [db _] (get db :username)))
 
-(re-frame/reg-sub
+(reg-sub
+  :current-old-instance
+  (fn [db _] (get db :current-old-instance)))
+
+(reg-sub
+  :old-instance-to-be-deleted
+  (fn [db _]
+    (let [old-uuid (:old-instance-to-be-deleted db)
+          olds (:old-instances db)]
+      (get olds old-uuid))))
+
+(reg-sub
+  :current-old-instance-url
+  :<- [:current-old-instance]
+  :<- [:old-instances]
+  (fn [[current-old-instance old-instances] _]
+    (:url (get old-instances current-old-instance))))
+
+(reg-sub
+  :new-old-instance
+  (fn [db _] (get (:old-instances db) (:new-old-instance db))))
+
+(reg-sub
+  :old-instances
+  (fn [db _]
+    (into {}
+          (filter
+            (fn [[id _]] (not= id (:new-old-instance db)))
+            (:old-instances db)))))
+
+(reg-sub
+  :old-instances-vec
+  :<- [:old-instances]
+  (fn [old-instances _] (into [] (vals old-instances))))
+
+(reg-sub
   :login-disabled?
-  (fn [db _] (re-frame/subscribe [:login-state]))
+  :<- [:login-state]
   (fn [login-state _] (not= login-state :login-is-ready)))
 
-(re-frame/reg-sub
+(reg-sub
   :logout-disabled?
-  (fn [db _] (re-frame/subscribe [:login-state]))
+  :<- [:login-state]
   (fn [login-state _] (not= login-state :user-is-authenticated)))
 
-(re-frame/reg-sub
+(reg-sub
   :login-inputs-disabled?
-  (fn [db _] (re-frame/subscribe [:login-state]))
+  :<- [:login-state]
   (fn [login-state _] (= login-state :user-is-authenticated)))

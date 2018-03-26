@@ -1,3 +1,11 @@
+;; View functions for Dative's login panel
+
+;; Functions that return re-com widget components which react (i.e., modify the
+;; DOM, or subscribe) to events emitted by the app database and which trigger
+;; events based on a user's interaction with the GUI.
+
+;; All Dative view modules should define a ``panel`` function.
+
 (ns dative.login
   (:require [re-com.core   :refer [h-box v-box box gap line title label
                                    hyperlink-href input-text input-password

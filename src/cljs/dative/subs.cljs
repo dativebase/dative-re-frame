@@ -11,6 +11,7 @@
   :login-state
   (fn [db _] (get db :login-state)))
 
+
 (reg-sub
   :current-tab
   (fn [db _] (get db :current-tab)))
@@ -141,3 +142,26 @@
   :login-inputs-disabled?
   :<- [:login-state]
   (fn [login-state _] (= login-state :user-is-authenticated)))
+
+(reg-sub
+  :logged-in-old-name
+  :<- [:login-state]
+  :<- [:current-old-instance]
+  :<- [:old-instances]
+  (fn [[login-state current-old-instance old-instances] _]
+    (when (= login-state :user-is-authenticated)
+      (:label (get old-instances current-old-instance)))))
+
+(reg-sub
+  :forms
+  (fn [db _] (:forms db)))
+
+(reg-sub
+  :visible-forms
+  :<- [:forms]
+  (fn [forms _]
+    forms))
+
+(reg-sub
+  :selected-tab-id
+  (fn [db _] (:selected-tab-id db)))

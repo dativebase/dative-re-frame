@@ -1,6 +1,7 @@
 (ns dative.db)
 
 
+;; OLD Instances (web services) that this Dative knows about.
 ;; TODO: these should be received from the Dative server and/or stored in a
 ;; JSON/EDN file.
 (def demo-old-1-uuid (random-uuid))
@@ -20,18 +21,30 @@
                           :url ""
                           :state :ready}})
 
+;; Forms that this
+
 (def default-db
-  {:name "Dative"
+  {:selected-tab-id :home
+
+   ;; Authentication state
    :username ""
    :password ""
-
    :login-state :login-is-ready
    :login-invalid-reason nil
 
+   ;; OLD instances
    :old-instances old-instances
    :current-old-instance demo-old-1-uuid
    :new-old-instance new-old-instance-uuid
    :old-instance-to-be-deleted nil
 
-   :current-tab :forms-tab
+   ;; Forms
+   :forms-page 1
+   :forms-items-per-page 10
+   :forms-count 0
+   ;; map from form IDs (int RDBMS pks) to forms (maps)
+   :forms {}
+   ;; map from form indices (calculated by dative-re-frame) to forms (maps)
+   ;:forms-by-index {}
+
    })

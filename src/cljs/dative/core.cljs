@@ -8,22 +8,27 @@
             [secretary.core                :as    secretary]
             [re-com.core                   :refer [h-box v-box box gap line scroller border label p title alert-box h-split] :refer-macros [handler-fn]]
             [re-com.util                   :refer [get-element-by-id item-for-id]]
+            [goog.history.EventType        :as    EventType]
+            ;; Dative
             [dative.config                 :as    config]
             [dative.events                 :as    dative-events]
+            [dative.forms                  :as    forms]
             [dative.home                   :as    home]
             [dative.login                  :as    login]
             [dative.old-instances          :as    old-instances]
             [dative.subs                   :as    dative-subs]
-            [dative.utils                  :refer [dative-title-box]]
-            [goog.history.EventType        :as    EventType])
+            [dative.utils                  :refer [dative-title-box]])
   (:import [goog History]))
 
 
 (def tabs-definition
-  [{:id :home                  :level :major :label "Home"               :panel home/panel}
-   {:id :admin                 :level :major :label "Admin"}
-   {:id :login                 :level :minor :label "Login"              :panel login/panel}
-   {:id :old-instances         :level :minor :label "OLDs"               :panel old-instances/panel}
+  [{:id :home          :level :major :label "Home"   :panel home/panel}
+   {:id :admin         :level :major :label "Admin"}
+   {:id :login         :level :minor :label "Login"  :panel login/panel}
+   {:id :old-instances :level :minor :label "OLDs"   :panel old-instances/panel}
+   {:id :forms         :level :major :label "Forms"}
+   {:id :forms-add     :level :minor :label "Add"    :panel forms/add-panel}
+   {:id :forms-browse  :level :minor :label "Browse" :panel forms/browse-panel}
    ])
 
 
@@ -84,25 +89,44 @@
 
 ;; -- Routes, Local Storage and History ------------------------------------------------------
 
-(def id-store        (local-storage (atom nil) ::id-store))
-(def selected-tab-id (reagent/atom (if (or (nil? @id-store) (nil? (item-for-id @id-store tabs-definition)))
-                                     (:id (first tabs-definition))
-                                     @id-store)))  ;; id of the selected tab from local storage
-
-
-(defroute dative-page "/:tab" [tab] (let [id (keyword tab)]
-                                    (reset! selected-tab-id id)
-                                    (reset! id-store id)))
+(defroute
+  dative-page
+  "/:tab"
+  [tab]
+  (let [id (keyword tab)]
+    (re-frame/dispatch [:set-selected-tab-id id])))
 
 
 (def history (History.))
-(events/listen history EventType/NAVIGATE (fn [event] (secretary/dispatch! (.-token event))))
+
+(events/listen
+  history
+  EventType/NAVIGATE
+  (fn [event] (secretary/dispatch! (.-token event))))
+
 (.setEnabled history true)
+
+
+(defn logged-in-old-title-bar
+  []
+  (let [logged-in-old-name @(re-frame/subscribe [:logged-in-old-name])]
+    (when logged-in-old-name
+      [box
+       :justify :center
+       :align   :center
+       :height  "62px"
+       :style   {:background-color "#666"}
+       :child [title
+               :label logged-in-old-name
+               :level :level1
+               :style {:font-size "32px" :color "#fefefe"}]])))
 
 
 (defn main
   []
-  (let [on-select-tab #(.setToken history (dative-page {:tab (name %1)}))] ;; or can use (str "/" (name %1))
+  ;; or can use (str "/" (name %1))
+  (let [on-select-tab #(.setToken history (dative-page {:tab (name %1)}))
+        selected-tab-id (re-frame/subscribe [:selected-tab-id])]
     (fn
       []
       [h-split
@@ -110,11 +134,9 @@
        ;; This assumes that height of <body> is itself also set to 100%.
        ;; width does not need to be set.
        :height   "100%"
-       ;:gap      "60px"
        :initial-split 9
        :margin "0px"
        :panel-1 [scroller
-                 ;:size  "none"
                  :v-scroll :auto
                  :h-scroll :off
                  :child [v-box
@@ -125,10 +147,16 @@
                  :attr  {:id "right-panel"}
                  :child [v-box
                          :size  "1"
-                         :children [(when-not (-> js/goog .-labs .-userAgent .-browser .isChrome) [browser-alert])
+                         :children [(when-not (-> js/goog .-labs .-userAgent
+                                                  .-browser .isChrome)
+                                      [browser-alert])
+                                    [logged-in-old-title-bar]
                                     [box
                                      :padding "0px 0px 0px 50px"
-                                     :child [(:panel (item-for-id @selected-tab-id tabs-definition))]]]]]])))    ;; the tab panel to show, for the selected tab
+                                     :child
+                                     [(:panel
+                                        (item-for-id @selected-tab-id
+                                                     tabs-definition))]]]]]])))
 
 
 (defn dev-setup []

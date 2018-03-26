@@ -1,10 +1,12 @@
 (ns dative.events
   (:require [re-frame.core :refer [after reg-event-db reg-event-fx]]
             [clojure.string :as string]
+            [cljs.pprint :refer [pprint]]
             [ajax.core :as ajax]
             [day8.re-frame.http-fx]
             [dative.db :as dative-db]
-            [dative.utils :refer [get-current-old-instance-url]]))
+            [dative.utils :refer [get-now add-dative-metadata ->kebab-case-recursive
+                                  get-current-old-instance-url]]))
 
 
 (def debug (after (fn [db event]
@@ -26,18 +28,68 @@
 ;; Miscellaneous Events
 ;; ============================================================================
 
-(defn handle-app-was-initialized
-  [db [event _]]
-  dative-db/default-db)
+(reg-event-db
+  :app-was-initialized
+  interceptors
+  (fn [db [event _]]
+    dative-db/default-db))
+
+(reg-event-fx
+  :set-selected-tab-id
+  interceptors
+  (fn [{:keys [db]} [_ new-selected-tab-id]]
+    (merge
+      {:db (assoc db :selected-tab-id new-selected-tab-id)}
+      (when (= new-selected-tab-id :forms-browse)
+        {:dispatch [:user-naved-to-browse-forms]}))))
 
 
-(defn handle-user-clicked-tab
-  [db [_ new-tab-id]]
-  (assoc db :current-tab new-tab-id))
+;; ============================================================================
+;; Forms (linguistic) Events
+;; ============================================================================
 
-(reg-event-db :app-was-initialized interceptors
-                       handle-app-was-initialized)
-(reg-event-db :user-clicked-tab interceptors handle-user-clicked-tab)
+(reg-event-fx
+  :user-naved-to-browse-forms
+  (fn [{:keys [db]} _]
+    (let [{:keys [current-old-instance old-instances forms-page
+                  forms-items-per-page]} db
+          current-old-instance-url (get-current-old-instance-url
+                                     old-instances current-old-instance)]
+      {:db db
+       :http-xhrio {:method           :get
+                    :with-credentials true
+                    :format           (ajax/json-request-format)
+                    :uri              (str current-old-instance-url "forms")
+                    :params           {:page forms-page
+                                       :items_per_page forms-items-per-page}
+                    :response-format  (ajax/json-response-format
+                                        {:keywords? true})
+                    :on-success       [:fetched-forms-successfully]
+                    :on-failure       [:fetched-forms-unsuccessfully]}})))
+
+(reg-event-db
+  :fetched-forms-successfully
+  (fn [db [_ {items :items :or {items []}
+              {forms-count :count :or {forms-count 0}
+               page :page
+               items-per-page :items_per_page} :paginator}]]
+    (let [now (get-now)
+          existing-forms (:forms db)
+          new-forms (->> items
+                         ->kebab-case-recursive
+                         (add-dative-metadata now page items-per-page)
+                         (map (fn [item] [(:id item) item]))
+                         (into {}))]
+      (-> db
+          (assoc :forms (merge existing-forms new-forms))
+          (assoc :forms-count forms-count)))))
+
+(reg-event-db
+  :fetched-forms-unsuccessfully
+  (fn [db response]
+    (println "fetch forms fail response")
+    (println response)
+    db))
 
 
 ;; ============================================================================

@@ -1,6 +1,9 @@
 (ns dative.utils
   (:require [re-com.core :refer [h-box v-box box gap title line label
-                                 hyperlink-href align-style]]))
+                                 hyperlink-href align-style]]
+            [camel-snake-kebab.core :refer [->kebab-case]]
+            [cljs-time.core :as cljs-time]
+            ))
 
 
 ; narrow, light grey column of text, on the RHS
@@ -141,3 +144,44 @@
 (defn get-current-old-instance-url
   [old-instances current-old-instance]
   (:url (get old-instances current-old-instance)))
+
+
+(defn ->kebab-case-recursive
+  "Converts
+  {:cow_bird [{:frog_face 2}] :dog_fish {:cat_bird 2}}
+  to
+  {:cow-bird [{:frog-face 2}] :dog-fish {:cat-bird 2}}"
+  [data-structure]
+  (cond
+    (map? data-structure)
+    (into {}
+          (map (fn [[k v]]
+                 [(if (keyword? k) (->kebab-case k) k)
+                  (->kebab-case-recursive v)])
+               data-structure))
+    (sequential? data-structure)
+    (into (if (vector? data-structure) [] '())
+          (map (fn [el] (->kebab-case-recursive el)) data-structure))
+    :else
+    data-structure))
+
+(defn get-now [] (cljs-time/now))
+
+(defn get-index
+  "Return an absolute index within an entire (server-stored) collection."
+  [idx page items-per-page]
+  (+ idx (* (dec page) items-per-page)))
+
+(defn add-dative-metadata
+  "For each map in coll add the timestamp of when it was retrieved and its
+  absolute index within the entire (server-stored) collection."
+  [now page items-per-page coll]
+  (map-indexed
+    (fn [idx item]
+      (assoc item
+             :dative-metadata
+             {:retrieved now
+              :index (get-index idx page items-per-page)}))
+    coll))
+
+(defn zip [& colls] (partition (count colls) (apply interleave colls)))

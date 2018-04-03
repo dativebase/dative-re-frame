@@ -45,8 +45,7 @@
             is-major?  (= (:level tab) :major)
             has-panel? (some? (:panel tab))]
         [:div
-         {:style         {;:width            "150px"
-                          :white-space      "nowrap"
+         {:style         {:white-space      "nowrap"
                           :line-height      "1.3em"
                           :padding-left     (if is-major? "24px" "32px")
                           :padding-top      (when is-major? "6px")
@@ -71,7 +70,6 @@
     [v-box
      :class    "noselect"
      :style    {:background-color "#fcfcfc"}
-     ;:size    "1"
      :children (for [tab tabs-definition]
                  [nav-item tab selected-tab-id on-select-tab])])
 
@@ -121,6 +119,23 @@
                :level :level1
                :style {:font-size "32px" :color "#fefefe"}]])))
 
+(defn focuser
+  []
+  (let [focus-id @(re-frame/subscribe [:focus-me])]
+    (println "focus this " focus-id)
+    (let [inp (.getElementById js/document focus-id)]
+      (if inp
+        (do
+          (println "focusing thing")
+          (.focus inp))
+        (println "not focusing thing")
+        )
+          ;char-idx (last focused-word)
+                 ;_ (println "word " morph-list " should be focused")
+                 ;]
+             ;(.focus inp)
+             ;(.setSelectionRange inp char-idx char-idx))))
+    [:div])))
 
 (defn main
   []
@@ -142,6 +157,7 @@
                  :child [v-box
                          :size "1"
                          :children [[dative-title-box]
+                                    ;[focuser]
                                     [left-side-nav-bar selected-tab-id on-select-tab]]]]
        :panel-2 [scroller
                  :attr  {:id "right-panel"}

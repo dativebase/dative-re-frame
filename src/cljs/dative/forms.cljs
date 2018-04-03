@@ -1,5 +1,9 @@
 ;; View functions for Dative forms
 
+;; .. note:: These are **not** web forms, i.e., collections of text and select
+;;    inputs. These are **linguistic** forms, i.e., words, morphemes, phrases,
+;;    sentences, etc.
+
 ;; Functions that return re-com widget components which react (i.e., modify the
 ;; DOM, or subscribe) to events emitted by the app database and which trigger
 ;; events based on a user's interaction with the GUI.
@@ -7,11 +11,13 @@
   (:require [re-com.core   :refer [h-box v-box box gap line title label
                                    hyperlink input-text input-password
                                    button p single-dropdown]]
+            [reagent.core :as reagent]
             [re-frame.core :as re-frame]
             [clojure.string :as string]
             [cljs.pprint :refer [pprint]]
             [dative.utils  :refer [panel-title title2 RHS-column-style
-                                   center-gap-px zip]]
+                                   center-gap-px zip split-into-words
+                                   split-into-morphemes get-word-id]]
             [dative.subs   :as subs]
             [goog.string :as gstring]
             [goog.string.format]))
@@ -46,10 +52,6 @@
 (def igt-line-step 3)      ;; the distance (in characters) that each subsequent
                            ;; IGT line is left- indented
 
-;; TODO: these should be taken from the OLD instance's app settings.
-(def word-delimiter #" ")  ;; Words are split on spaces (should be any number of spaces)
-(def morpheme-delimiter #"([-=])")  ;; Morphemes are split on hyphens or equals signs
-
 ;; Functions
 ;; ============================================================================
 
@@ -75,8 +77,7 @@
         (map (fn [[attr phrase]]
                [attr
                 (into []
-                      (map (fn [word] (string/split word morpheme-delimiter))
-                           (string/split phrase word-delimiter)))])
+                      (map split-into-morphemes (split-into-words phrase)))])
                form-igt-fields)))
 
 (defn pad-word-lists
@@ -238,22 +239,17 @@
       e.g., if the phrase is `le-s chien-s sont fatigu-é-s` and the line at hand
       is `sont fatigue-é-s`, then the offset will be 2 because `sont` is the
       third word.
-  - attr: the form attribute being displayed, e.g., :morpheme-break.
-  The map also includs an :igt-info key which valuates to a map containing the
-  morpheme-break-ids and morpheme-gloss-ids vectors supplied by the OLD; these
-  are used for morpheme cross-referencing."
+  - attr: the form attribute being displayed, e.g., :morpheme-break."
   [form]
   (let [igt-map (-> form
                     get-igt-vals
                     split-into-words-morphemes
                     pad-word-lists)]
-    {:igt-info {:morpheme-break-ids (:morpheme-break-ids form)
-                :morpheme-gloss-ids (:morpheme-gloss-ids form)}
-     :igt-lines (->> (vals igt-map)
-                     (apply zip)
-                     get-longest-word-lengths
-                     split-word-lengths-into-lines
-                     (get-igt-lines igt-map))}))
+    (->> (vals igt-map)
+         (apply zip)
+         get-longest-word-lengths
+         split-word-lengths-into-lines
+         (get-igt-lines igt-map))))
 
 (defn get-match-message
   [type_ manner id modifier relatee category]
@@ -261,15 +257,42 @@
     "This %s %s matches the form with id %s, %s as \"%s\", having category
     \"%s\"." type_ manner id modifier relatee category))
 
+(defn igt-char
+  "Display a character in an IGT word. Each character can register a dbl-click
+  event which transitions the form to ``edit mode`` and places the cursor on
+  the dbl-clicked character."
+  [chr form attr line-idx word-idx char-idx]
+  [:span
+   {:on-double-click
+    #(re-frame/dispatch
+       [:igt-char-double-clicked (:id form) attr line-idx word-idx char-idx])}
+   chr])
+
+(defn string->vec-igt-chars
+  "Given a string token (representing word word-idx of IGT line line-idx of
+  attribute attr of form form), return a vector of character <span>s as
+  returned by igt-char; char-offset indicates how far (in chars) the word is
+  from the start of the entire attr value. These <span>s trigger editable mode
+  when double-clicked."
+  [token form attr line-idx word-idx abs-word-idx char-offset]
+  (into []
+        (map-indexed
+          (fn [char-idx chr]
+            (igt-char chr form attr line-idx word-idx
+                      (+ char-offset char-idx)))
+          token)))
+
 (defn perfect-hlink
   "Return the morpheme or gloss token as a re-com hyperlink to the perfect-match
   vector. Example inputs:
   token: s
   attr: :morpheme-break
   perfect-match: [4 [PL Num]]"
-  [token attr perfect-match]
+  [token attr perfect-match form line-idx word-idx abs-word-idx char-offset]
   [hyperlink
-   :label token
+   :label [h-box
+           :children (string->vec-igt-chars token form attr line-idx word-idx
+                                            abs-word-idx char-offset)]
    :style {:color :blue}
    :tooltip (let [[id [relatee category]] perfect-match
                   [type_ modifier]
@@ -284,7 +307,7 @@
   token: s
   attr: :morpheme-break
   partial-matches: {3 [plural number] 4 [PL Num]}"
-  [token attr partial-matches]
+  [token attr partial-matches form line-idx word-idx abs-word-idx char-offset]
   (let [[type_ modifier]
         (if (= attr :morpheme-break)
           ["morpheme" "glossed"] ["gloss" "transcribed"])
@@ -294,7 +317,9 @@
                  type_ "partially" id modifier relatee category))
              partial-matches)]
     [hyperlink
-     :label token
+     :label [h-box
+             :children (string->vec-igt-chars token form attr line-idx word-idx
+                                              abs-word-idx char-offset)]
      :style {:color :green}
      :tooltip (string/join " " msgs)]))
 
@@ -302,7 +327,7 @@
   "Given token (a morpheme or a gloss) return a blue link to its exact match
   morpheme form entry, or else a green link to its partial match, or else just
   the token (no matches)."
-  [attr token my-refs their-refs]
+  [form attr token my-refs their-refs line-idx word-idx abs-word-idx char-offset]
   (if (seq my-refs)
     (let [my-refs (into {} (map (fn [[id ctrprt cat]] [id [ctrprt cat]])
                                 my-refs))
@@ -315,45 +340,152 @@
                                  (if (get their-refs id) true false)))
                              first)]
       (if perfect-match
-        (perfect-hlink token attr perfect-match)
-        (partial-hlink token attr my-refs)))
-    token))
+        ;; FOXFUCK
+        (perfect-hlink token attr perfect-match form line-idx word-idx
+                       abs-word-idx char-offset)
+        (partial-hlink token attr my-refs form line-idx word-idx abs-word-idx
+                       char-offset)))
+    [h-box
+     :children (string->vec-igt-chars token form attr line-idx word-idx
+                                      abs-word-idx char-offset)]))
+
+(defn get-morph-idx->char-offset
+  "Given a vector of morphemes, e.g., [un - break - able], return a map from
+  morpheme indices to character indices, in this case
+  {0 0, 1 2, 2 3, 3 8, 4 9}."
+  [morph-list]
+  (dissoc
+    (reduce-kv
+      (fn [{last-offset :last-offset :as ret} morph-idx morph]
+        (let [new-offset (+ last-offset (count morph))]
+          (-> ret
+              (assoc morph-idx last-offset)
+              (assoc :last-offset new-offset))))
+      {:last-offset 0}
+      morph-list)
+    :last-offset))
 
 (defn morpheme-links
   "Converts a vector of morphemes/glosses and delimiters to a hiccup data
   structure where morphemes may be hyperlinks to their matching lexical entries
   in the database, if there are any such matches."
-  [morph-list index igt-info attr]
-  (let [break-refs (nth (:morpheme-break-ids igt-info) index)
-        gloss-refs (nth (:morpheme-gloss-ids igt-info) index)
+  [morph-list abs-word-idx form line-idx word-idx attr]
+  (let [break-refs (nth (:morpheme-break-ids form) abs-word-idx)
+        gloss-refs (nth (:morpheme-gloss-ids form) abs-word-idx)
         [mine theirs] (if (= attr :morpheme-break)
                         [break-refs gloss-refs]
-                        [gloss-refs break-refs])]
+                        [gloss-refs break-refs])
+        morph-idx->char-offset (get-morph-idx->char-offset morph-list)]
     (into []
           (map-indexed
-            (fn [idx token]
-              (if (even? idx)
-                (let [ref-idx (/ idx 2)]
-                  (morpheme-link attr token (nth mine ref-idx) (nth theirs
-                                                                    ref-idx)))
-                token))
+            (fn [morph-idx token]
+              (let [char-offset (morph-idx->char-offset morph-idx)]
+                (if (even? morph-idx)  ;; even = morphs/glosses; odd = delims
+                  (let [ref-idx (/ morph-idx 2)]
+                    (morpheme-link form attr token (nth mine ref-idx)
+                                   (nth theirs ref-idx) line-idx word-idx
+                                   abs-word-idx char-offset))
+                  (igt-char token form attr line-idx word-idx char-offset))))
             morph-list))))
+
+(def word-input-meta-keys
+  ["Escape"  ;; should exit edit mode
+   "Backspace"  ;; should join the current word to the previous one
+   " "  ;; should cause the focused word to be incremented ...
+   "ArrowUp"  ;; should move to the word above
+   "ArrowDown"  ;; should move to the word below
+   ])
+
+(defn key-up-form-word-edit-input
+  [e form-id attr line-idx word-idx abs-word-idx igt-line]
+  (let [key (.-key e)]
+    (when (some #{key} word-input-meta-keys)
+      (case key
+        " " (re-frame/dispatch [:split-word-at (-> e .-target .-selectionStart)
+                                form-id attr line-idx word-idx abs-word-idx igt-line])
+        "Escape" (re-frame/dispatch [:switch-to-display-mode form-id])))))
+
+(defn word-edit-input
+  "Display a text input for editing a single word of an IGT form line."
+  [morph-list form width line-idx word-idx offset attr igt-line]
+  (let [word-id (get-word-id (:id form) attr (+ offset word-idx))
+        [foc-attr foc-line-idx foc-word-idx foc-char-idx :as focused-word]
+        (get-in form [:dative-metadata :focused-word])]
+    (reagent/create-class
+      {:component-did-mount
+       (fn []
+         (let [input-id (get-word-id (:id form) foc-attr (+ offset foc-word-idx))
+               ; _ (println input-id)
+               input (.getElementById js/document input-id)
+               ; _ (println input)
+               ]
+           ; (println "got here")
+           (when input (.focus input))
+
+
+         ;(println "word edit input DID MOUNT " morph-list)
+         ;(when (= (list attr line-idx word-idx) (take 3 focused-word))
+           ;(let [inp (.getElementById js/document word-id)
+                 ;char-idx (last focused-word)
+                 ;_ (println "word " morph-list " should be focused")
+                 ;]
+             ;(.focus inp)
+             ;(.setSelectionRange inp char-idx char-idx))))
+
+             ))
+       :reagent-render
+       (fn [morph-list form width line-idx word-idx offset attr igt-line]
+         ; (println "word edit input RENDERED with morph-list " morph-list)
+         [input-text
+          ;; FOX
+          :validation-regex #"^[^\s]*$"
+          :attr {:id word-id
+                 :on-key-up
+                 (fn [e] (key-up-form-word-edit-input
+                           e (:id form) attr line-idx word-idx
+                           (+ offset word-idx) igt-line))}
+          :width width
+          :style {:padding "3px 4px"
+                  :line-height "1.9em"
+                  :height "24px"}
+          :model (string/join "" morph-list)
+          :change-on-blur? false
+          :on-change (fn [new-value]
+                        (re-frame/dispatch
+                          [:igt-input-changed new-value (:id form) attr
+                           line-idx word-idx (+ offset word-idx)]))])})))
+
+(defn igt-word-display
+  "Display a single IGT word (possibly multi-morphemic) without any
+  cross-referencing links to other forms."
+  [morph-list form line-idx word-idx attr]
+  (into []
+        (map-indexed
+          (fn [char-idx chr]
+            (igt-char chr form attr line-idx word-idx char-idx))
+          (flatten (map seq morph-list)))))
 
 (defn word-box
   "Takes a word as a vector of morphemes and delimiters (morph-list), the index
-  of the word within the form, the word-length (in characters), common metadata
-  about the IGT fields, and the form attribute being displayed, and returns a
-  re-com box for displaying that word with a calculated width (which will equal
-  that of all of the other words in the same column) and with morpheme
-  cross-references as links, if applicable."
-  [morph-list index offset word-length igt-info attr]
-  (let [val
-        (if (some #{attr} [:morpheme-break :morpheme-gloss])
-          (morpheme-links morph-list (+ offset index) igt-info attr)
-          [(string/join "" morph-list)])
-        width (str (* 0.8 word-length) "em")]
+  of the IGT line, the index of the word within the line, the offset of the
+  word within the entire IGT form value, the (longest) word length, the form
+  itself, and the attribute (e.g., :morpheme-break) on display in this line,
+  and returns a re-com h-box for displaying that word with a calculated width
+  (which will equal that of all of the other words in the same column) and with
+  morpheme cross-references as links, if applicable."
+  [morph-list line-idx word-idx offset word-length form attr igt-line]
+  (let [width (str (* 0.8 word-length) "em")]
+    ; (println "word-box rendered " morph-list)
     [h-box
-     :children val
+     :children (cond
+                 (= :edit (get-in form [:dative-metadata :state]))
+                 [[word-edit-input morph-list form width line-idx word-idx
+                   offset attr igt-line]]
+                 (some #{attr} [:morpheme-break :morpheme-gloss])
+                 (morpheme-links morph-list (+ offset word-idx) form line-idx
+                                 word-idx attr)
+                 :else
+                 (igt-word-display morph-list form line-idx word-idx attr))
      :width width]))
 
 (defn char-len->ems
@@ -371,19 +503,22 @@
 (defn igt-line-box
   "Return a re-com h-box that displays an IGT line: a (possibly zero-length
   indent div followed by one or more word-boxes."
-  [igt-line igt-info]
+  [igt-line line-idx form]
   [h-box
+   :gap "5px"
    :children
    (concat [(igt-line-indent (:indent igt-line))]
            (into []
                  (map-indexed
-                   (fn [idx morph-list]
-                     (word-box morph-list
-                               idx
+                   (fn [word-idx morph-list]
+                     [word-box morph-list
+                               line-idx
+                               word-idx
                                (:offset igt-line)
-                               (nth (:word-lens igt-line) idx)
-                               igt-info
-                               (:attr igt-line)))
+                               (nth (:word-lens igt-line) word-idx)
+                               form
+                               (:attr igt-line)
+                               igt-line])
                    (:words igt-line))))])
 
 (defn igt
@@ -392,11 +527,13 @@
   [form]
   (let [igt-lines (compute-igt-lines form)]
     [v-box
-     :gap "2px"
+     :gap "5px"
      :children
      (into []
-           (map (fn [igt-line] (igt-line-box igt-line (:igt-info igt-lines)))
-                (:igt-lines igt-lines)))]))
+           (map-indexed
+             (fn [line-idx igt-line]
+               [igt-line-box igt-line line-idx form])
+             igt-lines))]))
 
 (defn form-view
   "Display a linguistic form."
@@ -428,6 +565,4 @@
   []
   [forms-add-panel])
 
-(defn browse-panel
-  []
-  [forms-browse-panel])
+(defn browse-panel [] [forms-browse-panel])

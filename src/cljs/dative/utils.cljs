@@ -2,8 +2,8 @@
   (:require [re-com.core :refer [h-box v-box box gap title line label
                                  hyperlink-href align-style]]
             [camel-snake-kebab.core :refer [->kebab-case]]
-            [cljs-time.core :as cljs-time]
-            ))
+            [clojure.string :as string]
+            [cljs-time.core :as cljs-time]))
 
 
 ; narrow, light grey column of text, on the RHS
@@ -181,7 +181,22 @@
       (assoc item
              :dative-metadata
              {:retrieved now
-              :index (get-index idx page items-per-page)}))
+              :index (get-index idx page items-per-page)
+              :state :display}))
     coll))
 
 (defn zip [& colls] (partition (count colls) (apply interleave colls)))
+
+;; TODO: these should be taken from the OLD instance's app settings.
+(def morpheme-delimiter #"([-=])")  ;; Morphemes are split on hyphens or equals signs
+
+(defn split-into-words [word] (string/split word #"\s+"))
+(defn join-into-phrase [word-coll] (string/join " " word-coll))
+
+(defn split-into-morphemes
+  [morpheme]
+  (string/split morpheme morpheme-delimiter))
+
+(defn get-word-id
+  [form-id attr abs-word-idx]
+  (string/join "-" ["form" form-id "attr" (name attr) "word" abs-word-idx]))

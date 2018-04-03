@@ -9,12 +9,12 @@
 (def new-old-instance-uuid (random-uuid))
 (def old-instances
   {demo-old-1-uuid {:id demo-old-1-uuid
-                    :label "Demo OLD 1"
+                    :label "Pyramid OLD"
                     :url "http://127.0.0.1:61001/old/"
                     :state :ready}
    demo-old-2-uuid {:id demo-old-2-uuid
-                    :label "Demo OLD 2"
-                    :url "http://127.0.0.1:61001/xyzold/"
+                    :label "Pylons OLD"
+                    :url "http://127.0.0.1:5009/"
                     :state :ready}
    new-old-instance-uuid {:id new-old-instance-uuid
                           :label ""
@@ -46,5 +46,7 @@
    :forms {}
    ;; map from form indices (calculated by dative-re-frame) to forms (maps)
    ;:forms-by-index {}
+
+   :focus-me nil
 
    })

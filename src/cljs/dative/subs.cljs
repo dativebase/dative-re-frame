@@ -165,3 +165,7 @@
 (reg-sub
   :selected-tab-id
   (fn [db _] (:selected-tab-id db)))
+
+(reg-sub
+  :focus-me
+  (fn [db _] (:focus-me db)))

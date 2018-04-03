@@ -5,8 +5,13 @@
             [ajax.core :as ajax]
             [day8.re-frame.http-fx]
             [dative.db :as dative-db]
-            [dative.utils :refer [get-now add-dative-metadata ->kebab-case-recursive
-                                  get-current-old-instance-url]]))
+            [dative.utils :refer [get-now add-dative-metadata
+                                  ->kebab-case-recursive
+                                  get-current-old-instance-url split-into-words
+                                  join-into-phrase get-word-id]]
+            [dative.subs   :as subs]
+            [goog.string :as gstring]
+            [goog.string.format]))
 
 
 (def debug (after (fn [db event]
@@ -57,6 +62,7 @@
                                      old-instances current-old-instance)]
       {:db db
        :http-xhrio {:method           :get
+                    :headers          {:Content-Type "application/json; utf8"}
                     :with-credentials true
                     :format           (ajax/json-request-format)
                     :uri              (str current-old-instance-url "forms")
@@ -91,6 +97,56 @@
     (println response)
     db))
 
+(reg-event-db
+  :igt-char-double-clicked
+  (fn [db [_ form-id attr line-idx word-idx char-idx]]
+    (-> db
+        (assoc-in [:forms form-id :dative-metadata :state] :edit)
+        (assoc-in [:forms form-id :dative-metadata :focused-word]
+                  [attr line-idx word-idx char-idx]))))
+
+(reg-event-db
+  :switch-to-display-mode
+  (fn [db [_ form-id]]
+    (assoc-in db [:forms form-id :dative-metadata :state] :display)))
+
+
+; (defn get-next-igt-word-idxs
+;   [attr line-idx word-idx igt-line]
+;   (println "get-next-igt-word")
+;   (pprint igt-line)
+;   (let [
+;   [:transcription 0 0])
+
+(reg-event-db
+  :split-word-at
+  (fn [db [_ split-idx form-id attr line-idx word-idx abs-word-idx igt-line]]
+    (let [current-phrase (get-in db [:forms form-id attr])
+          current-word-vec (split-into-words current-phrase)
+          word-to-split (nth current-word-vec abs-word-idx)
+          split-word (map #(apply str %) (split-at split-idx word-to-split))
+          new-word-list (flatten (assoc current-word-vec abs-word-idx split-word))
+          new-phrase (join-into-phrase new-word-list)
+          ; _ (get-next-igt-word-idxs abs-word-idx igt-line)
+          _ (println "abs-word-idx")
+          _ (println abs-word-idx)
+          ]
+      (-> db
+          (assoc-in [:forms form-id attr] new-phrase)
+          (assoc :focus-me (get-word-id form-id attr (inc abs-word-idx)))
+
+          )
+          )))
+
+(reg-event-db
+  :igt-input-changed
+  (fn [db [_ new-word form-id attr line-idx word-idx abs-word-idx]]
+    (let [new-word (string/trim new-word)
+          current-phrase (get-in db [:forms form-id attr])
+          current-word-vec (split-into-words current-phrase)
+          new-word-vec (assoc current-word-vec abs-word-idx new-word)
+          new-phrase (join-into-phrase new-word-vec)]
+      (assoc-in db [:forms form-id attr] new-phrase))))
 
 ;; ============================================================================
 ;; Login Form Events
